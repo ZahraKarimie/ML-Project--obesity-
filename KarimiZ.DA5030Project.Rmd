@@ -1,0 +1,610 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+# Load libraries 
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(moments)
+library(caret)
+```
+
+# Load the data from the csv file and make dataframe  
+
+```{r}
+# load data directly from URL 
+dat <- read_csv("https://archive.ics.uci.edu/ml/machine-learning-databases/00544/")
+
+data <- read.csv("ObesityDataSet_raw_and_data_sinthetic.csv")
+
+df <- data.frame(data)
+```
+# explor the data 
+```{r}
+str(df)
+summary(df)
+
+# the data has 2111 observations and 17 variables total. combination of categorical variables and numeric variables 
+```
+# explor the vatiables types 
+```{r}
+sapply(df,class)
+```
+
+# data explanation :
+# Gender >> What is your gender? >> categoorical >> female & male
+# age >> what is your age? >> numeric 
+# Height >> what is your height? >> numeric
+# Weight >> what is your weight? >> numeric 
+# family_history_with_overweight >> Has a family member suffered or suffers from overweight? >> categorical >> Y&N
+# FAVC >>Do you eat high caloric food frequently? >> categorical >> Y&N
+# SMOKE >> do you smoke? >> categorical >> Y&N
+# CAEC - Consumption of food between meals (0:No, 1:Sometimes, 2:Frequently, 3:Always)
+# SCC >> The attributes related to the physical condition are: Calories consumption monitoring (1:Yes, 0: No)
+# CALC >> Consumption of alcohol (0:No, 1:Sometimes,2:Frequently, 3:Always)
+# MTRANS >> Transportation used (1:Automobile, 2:Motorbike, 3:Bike,4: Public Transportation, 5:Walking)
+# # NObeyesdad >> Target (1:Insufficient Weight (BMI<18.5), 2:Normal
+# Weight (18.5 to 24.9), 3:Overweight (25 to 29.9),
+# 4:Obesity Type I (30 to 34.9), 5: Obesity Type II (35 to
+# 39.9), 6: Obesity Type III (BMI>40)
+
+# exploratory of data plots 
+```{r}
+#Overlaying the normal curve on the histogram of obesity levels 
+
+# validate vars- make a list of the numeric variable and list of categorical variables 
+
+categorical_var <- c("Gender", "family_history_with_overweight", "FAVC", "CAEC", "SMOKE", "SCC", "CALC", "MTRANS", "NObeyesdad" )
+numeric_var <- c("Age", "Height", "Weight" , "FCVC", "NCP", "CH2O", "FAF", "TUE" )
+
+#explore data plots 
+for (col in categorical_var){
+  dist = df[col] %>%
+    group_by(.data[[col]]) %>%
+    summarise(n=n()) %>%
+    ggplot(aes(x=.data[[col]], .data[["n"]])) + geom_col(width = 0.25, fill = 'blue')
+  show(dist)
+}
+
+for (col in numeric_var){
+  dist = df[col] %>%
+    #group_by(.data[[col]]) %>%
+    #summarise(n=n()) %>%
+    ggplot(aes(x=.data[[col]]))+geom_density()
+  show(dist)
+}
+
+```
+
+# Outliers for numeric faetures 
+```{r}
+boxplot(df$Age, range = 3)
+
+z_score <- as.data.frame(sapply(df[,numeric_var], function(z) (abs(z-mean(z))/sd(z))))
+#z_score$Outcome <- diabetes$Outcome
+#view(z_score)
+
+# Finding the outliers in each column ( values more than 3 sd)
+Outliers <- function(data){
+  result <- which(abs(data)>3)
+  length(result)
+}
+
+apply(z_score,2,Outliers)
+
+# as the outliers are not many (25 total) in compare to the observation count(2111), we can impute the outliers and  remove rows including outliers from the dataframe.  
+
+```
+# imputing the outliers 
+
+```{r}
+Outliers_r <- function(data){
+  result <- which(abs(data)>3)
+  result
+}
+
+out <- apply(z_score,2,Outliers_r)
+dim(df)
+df <- df[- unlist(out),]
+dim(df)
+```
+
+
+#Check to see if there is any missing value in the data 
+
+```{r}
+sum(is.na(df))
+```
+# add few random NA to dataframe
+```{r}
+n <- nrow(df)
+df <- apply (df, 2, function(x) {x[sample( c(1:n), floor(n/1000))] <- NA; x} )
+df <- data.frame(df)
+df[, numeric_var] <- apply(df[,numeric_var],2,as.numeric)
+sum(is.na(df))
+```
+# handling the missing value in the dataframe 
+# as there are just few NA (34 NA) in the data and the data has 2111 observation, it should be okay to just imoute the missing data. so I will remove rows with NA values.
+
+```{r}
+dim(df)
+df <- na.omit(df)
+dim(df)
+```
+# check the normality of the numeric variables- Age 
+```{r}
+ggplot(df,aes(x=Age))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$Age),
+  sd = sd(df$Age)), colour ='red', size =1)
+skewness(df$Age)
+
+# Age is skewed to right a little bit but I consider it as pretty normal distribution 
+```
+# check the normality of the numeric variables Height
+```{r}
+ggplot(df,aes(x=Height))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$Height),
+  sd = sd(df$Height)), colour ='red', size =1)
+skewness(df$Height)
+# the distribution is fairly normal
+```
+
+# check the normality of the numeric variables 
+```{r}
+ggplot(df,aes(x=Weight))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$Weight),
+  sd = sd(df$Weight)), colour ='red', size =1)
+skewness(df$Weight)
+# the distribution is almot normal
+```
+# check the normality of the numeric variables 
+```{r}
+ggplot(df,aes(x=FCVC))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$FCVC),
+  sd = sd(df$FCVC)), colour ='red', size =1)
+skewness(df$FCVC)
+```
+
+# check the normality of the numeric variables 
+```{r}
+ggplot(df,aes(x=NCP))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$NCP),
+  sd = sd(df$NCP)), colour ='red', size =1)
+skewness(df$NCP)
+```
+
+# check the normality of the numeric variables 
+```{r}
+ggplot(df,aes(x=CH2O))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$CH2O),
+  sd = sd(df$CH2O)), colour ='red', size =1)
+skewness(df$CH2O)
+```
+
+# check the normality of the numeric variables 
+```{r}
+ggplot(df,aes(x=FAF))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$FAF),
+  sd = sd(df$FAF)), colour ='red', size =1)
+skewness(df$FAF)
+```
+
+# check the normality of the numeric variables 
+```{r}
+ggplot(df,aes(x=TUE))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$TUE),
+  sd = sd(df$TUE)), colour ='red', size =1)
+skewness(df$TUE)
+```
+# fix the normality issue 
+```{r}
+df[,numeric_var[4:8]] <- apply(df[,numeric_var[4:8]],2,round)
+ggplot(data = df, aes(x = TUE)) +
+  geom_bar(fill = 'blue')
+# as the variables "FCVC","NCP","CH2O","FAF","TUE" were numerical in initial data, and the distribution was not normal at all. but these variables are kind of categorical, please look at the explanation of the each variables. so I use round to just have integer number and make them again categorical variables. For example variable "TUE" is the answer of the question "Which transportation do you usually use? AND 4 possible answer in the survey was Motorbike, bike, public Transportation, walking." I expecte that TUE from first be factor with 4 levels, but somehow the data is numeric (1-4). I think use round  function here would help us to eliminate the normality issue and also make better sense to describe that TUE variable. 
+```
+
+
+# categorical variables - factor 
+# Gender
+```{r}
+table(df$Gender)
+df$Gender <- as.numeric(factor(df$Gender))
+table(df$Gender)
+```
+# family_history_with_overweight
+```{r}
+table(df$family_history_with_overweight)
+df$family_history_with_overweight <- as.numeric(factor(df$family_history_with_overweight))
+table(df$family_history_with_overweight)
+```
+# FAVC - Do you eat high caloric food frequently?
+```{r}
+table(df$FAVC)
+df$FAVC <- as.numeric(factor(df$FAVC))
+table(df$FAVC)
+
+```
+# CAEC - Consumption of food between meals (0:No, 1:Sometimes,2:Frequently, 3:Always)
+```{r}
+table(df$CAEC)
+df$CAEC <- as.numeric(factor(df$CAEC))
+table(df$CAEC)
+```
+
+# SMOKE - Do you smoke?
+```{r}
+table(df$SMOKE)
+df$SMOKE <- as.numeric(factor(df$SMOKE))
+table(df$SMOKE)
+```
+# SCC >> The attributes related to the physical condition are: Calories consumption monitoring (1:Yes, 0: No)
+```{r}
+table(df$SCC)
+df$SCC <- as.numeric(factor(df$SCC))
+table(df$SCC)
+```
+# CALC >> Consumption of alcohol (0:No, 1:Sometimes,2:Frequently, 3:Always)
+```{r}
+table(df$CALC)
+df$CALC <- as.numeric(factor(df$CALC))
+table(df$CALC)
+```
+# MTRANS >> Transportation used (1:Automobile, 2:Motorbike, 3:Bike,4: Public Transportation, 5:Walking)
+```{r}
+table(df$MTRANS)
+df$MTRANS <- as.numeric(factor(df$MTRANS))
+table(df$MTRANS)
+
+ggplot(data = df, aes(x = MTRANS)) +
+  geom_bar(fill = 'blue')
+```
+# NObeyesdad >> Target (1:Insufficient Weight (BMI<18.5), 2:Normal
+# Weight (18.5 to 24.9), 3:Overweight (25 to 29.9),
+# 4:Obesity Type I (30 to 34.9), 5: Obesity Type II (35 to
+# 39.9), 6: Obesity Type III (BMI>40) 
+```{r}
+table(df$NObeyesdad)
+df$NObeyesdad <- as.numeric(factor(df$NObeyesdad))
+table(df$NObeyesdad)
+```
+```{r}
+# feature engineering new drived feature 
+# NObeyesdad >> Target (1:Insufficient Weight (BMI<18.5), 2:Normal
+# Weight (18.5 to 24.9), 3:Overweight (25 to 29.9),
+# 4:Obesity Type I (30 to 34.9), 5: Obesity Type II (35 to
+# 39.9), 6: Obesity Type III (BMI>40)
+df2 <- df
+df2$BMI <- df2$Weight/df2$Height^2
+head(df2$BMI)
+
+```
+
+# normalizing the contiouns varivale 
+```{r}
+normalize <- function(x) {
+return((x - min(x)) / (max(x) - min(x))) }
+
+target <- as.numeric(df$NObeyesdad)
+df <- apply(df,2,as.numeric)
+df <- apply(df,2,normalize)
+#df$BMI <- normalize(df$BMI)
+df <- as.data.frame(df)
+df <- apply(df,2,as.numeric)
+
+summary(df)
+```
+
+# distribution of the target 
+
+```{r}
+df <- as.data.frame(df)
+
+hist(df$NObeyesdad)
+#Overlaying the normal curve on the histogram of NObeyesdad
+
+ggplot(df,aes(x=NObeyesdad))+
+  geom_histogram(aes(y=..density..))+
+  stat_function(fun=dnorm, args = list(mean = mean(df$NObeyesdad),
+  sd = sd(df$NObeyesdad)), colour ='red', size =1)
+skewness(df$NObeyesdad)
+# the data that I already have shows that the distribution of the obesity level is pretty close tho normal distribution 
+```
+
+```{r}
+library(corrplot)
+library(RColorBrewer)
+M <-cor(df)
+corrplot(M, type="upper", order="hclust",
+         col=brewer.pal(n=10, name="RdYlBu"))
+```
+# 
+```{r}
+library(psych)
+pairs.panels(df)
+```
+# identification of principal components (PCA)
+```{r}
+cor(df$NObeyesdad, df[, seq(1:16)])
+
+# based on the results of the correlation between our target (NObeyesdad), the features that has stronger impact on obesity levels are :
+# weight, Age, family_history_with_overweight, NCP, CAEC, CH2O, SCC, FAF, TUE, CALC
+```
+
+
+# Split data to train and test data - 80% for training and 20% for testing purposes 
+```{r}
+df$NObeyesdad <- target
+set.seed(2343)
+split_train <- sample.int(n = nrow(df), size = floor(.80*nrow(df)), replace = F) 
+train_data <- df[split_train,]
+test_data <- df[-split_train, ]
+
+```
+# train model
+
+# KNN model with normalizing all numeric and categorical variables 
+```{r}
+library(class)
+
+acc_knn <- data.frame(K = c(1,3,5,7,9,11,13,15), accuracy = NA)
+for ( i in c(1,3,5, 7, 9, 11, 13, 15)){
+  knn_pred <- knn(train = train_data[, -17], test = test_data[,-17], cl = train_data$NObeyesdad , i)
+  acc_knn$accuracy[(i+1)/2] <- sum(knn_pred == test_data$NObeyesdad)/nrow(test_data)
+  
+}
+acc_knn
+ggplot(data = acc_knn, mapping = aes(x = K, y = accuracy)) +
+  geom_line(color="red")
+
+# by looking to the results, even thought the k=1 has the maximum accuracy, I did not choose it as it seems that it is over fitted with high variance error. I should find a sweet spot between variance error and bias error. K= 5 seems to be a good fit.the accuracy for knn with k=5 is 0.77. 
+```
+
+
+# Decision Tree model
+```{r}
+library(C50)
+DT_model <- C5.0(train_data[, -17], factor(train_data$NObeyesdad))
+DT_pred <- predict(DT_model, test_data[,-17], type ="class")
+sum(test_data$NObeyesdad == DT_pred)/nrow(test_data)
+#plot(DT_model)
+# the accuracy is 0.94. better than knn model accuracy. 
+
+```
+# boosting the decision tree use the trial =10 , the accuracy goes to 0.96
+```{r}
+DT_model2 <- C5.0(train_data[, -17], factor(train_data$NObeyesdad), trials = 10)
+DT_pred2 <- predict(DT_model2, test_data[,-17], type ="class")
+sum(test_data$NObeyesdad == DT_pred2)/nrow(test_data)
+# plot(DT_model3)
+
+```
+
+# Neural Network model
+
+```{r}
+library(neuralnet)
+
+
+NN_model <- neuralnet(NObeyesdad ~ ., data = train_data, hidden = 1)
+plot(NN_model)
+model_results <- compute(NN_model, test_data[-17])
+predicted_strength <- model_results$net.result
+cor(predicted_strength, test_data[17])
+sum(test_data$NObeyesdad == round(predicted_strength))/nrow(test_data)
+
+```
+
+```{r}
+library(neuralnet)
+
+NN_model2 <- neuralnet(NObeyesdad ~ ., data = train_data, hidden = 5, stepmax = 1e+06)
+plot(NN_model2)
+model_results2 <- compute(NN_model2, test_data[-17])
+predicted_strength2 <- model_results2$net.result
+cor(predicted_strength2, test_data[17])
+sum(test_data$NObeyesdad == round(predicted_strength2))/nrow(test_data)
+```
+# appropriateness of chosen model for data
+# the data that I have chose has the target varible (NObeyesdad) has 7 different levels. it is not simple 2 classification binary. so for choosing the model I should be carefull. SVM usually works best for binary classification so I did not chose it. instead, I chose KNN, Decision tree and Nural networks. as these three models for my data (multiple levels target) seems to be more promissing. I got accuracy of 78% with KNN, 97% with decision tree and almost 90% with nural networks. these results sound good.
+
+
+# evaluating knn model confusion matrix 
+```{r}
+print(table(Predicted =  knn_pred, Actual = unlist(test_data[17])))
+```
+# evaluating decision tree model 
+```{r}
+table(Predicted =  DT_pred2, Actual = unlist(test_data[17]))
+```
+#evaluating Neural network model
+```{r}
+table(Predicted =  round(predicted_strength2), Actual = unlist(test_data[17]))
+```
+#set 5 fold cross validation for neural network model
+```{r}
+library(caret)
+library(ISLR)
+#  setting seed to generate a reproducible random sampling
+set.seed(123)
+ 
+# define training control which generates parameters that further control how models are created
+train_control <- trainControl(method = "cv",
+                              number = 5)
+ 
+ 
+# building the model and predicting the target variable as per the decision tree classifier
+model <- train(NObeyesdad~., data = df,
+               trControl = train_control,
+               method = "neuralnet")
+
+print(model)
+```
+#set 5 fold cross validation for treebag
+```{r}
+
+# building the model and predicting the target variable as per the decision tree classifier
+model_treebag <- train(NObeyesdad~., data = df,
+               trControl = train_control,
+               method = "treebag")
+
+print(model_treebag)
+```
+
+#set 5 fold cross validation for knn
+```{r}
+
+# building the model and predicting the target variable as per the decision tree classifier
+model_k <- train(NObeyesdad~., data = df,
+               trControl = train_control,
+               method = "knn", preProcess = c("center","scale"), tuneLength = 5)
+
+print(model_k)
+```
+
+# bagging with homogenous learners 
+```{r}
+library(randomForest)
+rf_model <- randomForest(NObeyesdad~., data=train_data, ntree = 10) 
+rf_pred <- predict(rf_model, test_data[,-17], type = "class")
+cor(rf_pred, test_data[17])
+sum(test_data$NObeyesdad == round(rf_pred))/nrow(test_data)
+```
+
+
+# enssmble the models
+```{r}
+predictObesityLevel <- function(newcase){
+# KNN
+knn_pred <- knn(train = train_data[, -17], test = newcase, cl = train_data$NObeyesdad ,k= 5)
+
+# Decision tree 
+DT_pred2 <- predict(DT_model2, newcase, type ="class")
+
+# Neural Network
+model_results2 <- compute(NN_model2, newcase)
+predict <- model_results2$net.result
+NN_pred <- round(predict)
+
+# I use weighted method as decision tree accuracy was best and then Neural network and after that Knn, so I give weight like 1 for knn, 2 for NN, 3 for decision tree.  
+result <- round((as.numeric(knn_pred) + as.numeric(DT_pred2)*15 +as.numeric(NN_pred)*4)/20)
+
+  # create a majority voting system
+return (result)
+}
+```
+# by comparing the result from the enssemble model and other trained model, I can say that still the decission tree has a better performance in compare to the enssemble model. the reason is that other model accuracy is much less than decision tree , combiningthem together does not provide more accurate results. 
+
+```{r}
+df_result <- data.frame(x = test_data[17], y = NA)
+for ( i in seq(1:nrow(test_data))){
+ df_result$y[i] <- predictObesityLevel(test_data[i,-17]) 
+}
+sum(df_result$NObeyesdad == df_result$y)/nrow(test_data)
+```
+
+```{r}
+library(e1071)
+svm1 <- svm(NObeyesdad~., data=train_data, 
+          method="C-classification",kernel = 'radial', 
+          gamma=0.5, cost=1000)
+svm_pred <- prediction <- predict(svm1, test_data[,-17])
+sum(round(svm_pred) == test_data[17])/nrow(test_data)
+```
+
+
+```{r}
+
+summary(df$Age)
+train_data_NB <- train_data
+test_data_NB <- test_data
+numerical_var <- c("Age", "Height","Weight")
+# transform categorical "age" for train set
+train_data_NB <- train_data_NB %>% mutate( Age = case_when(
+Age >= 0 & Age < 0.2011 ~ 1,
+Age >= 0.2011 & Age < 0.2982 ~ 2, Age >= 0.2982 & Age < 0.4104 ~ 3,
+Age >= 0.4104 & Age <=1 ~ 4
+) )
+
+# transform categorical "age" for test set
+test_data_NB <- test_data_NB %>% mutate( Age = case_when(
+Age >= 0 & Age < 0.2011 ~ 1,
+Age >= 0.2011 & Age < 0.2982 ~ 2, Age >=0.2982 & Age < 0.4104 ~ 3,
+Age >= 0.4104 & Age <=1 ~ 4
+) )
+```
+
+```{r}
+summary(df$Weight)
+
+# transform categorical "age" for train set
+train_data_NB <- train_data_NB %>% mutate( Weight = case_when(
+Weight >= 0 & Weight < 0.2011 ~ 1,
+Weight >= 0.2011 & Weight < 0.2982 ~ 2, Weight >= 0.2982 & Weight < 0.4104 ~ 3,
+Weight >= 0.4104 & Weight <=1 ~ 4
+) )
+
+# transform categorical "age" for test set
+test_data_NB <- test_data_NB %>% mutate( Weight = case_when(
+Weight >= 0 & Weight < 0.2084 ~ 1,
+Weight >= 0.2084 & Weight < 0.3490 ~ 2, Weight >=0.3490 & Weight < 0.5476 ~ 3,
+Weight >= 0.5476 & Weight <=1 ~ 4
+) )
+```
+
+```{r}
+summary(df$Height)
+
+# transform categorical "age" for train set
+train_data_NB <- train_data_NB %>% mutate( Height = case_when(
+Height >= 0 & Height < 0.2011 ~ 1,
+Height >= 0.2011 & Height < 0.2982 ~ 2, Height >= 0.2982 & Height < 0.4104 ~ 3,
+Height >= 0.4104 & Height <=1 ~ 4
+) )
+
+# transform categorical "age" for test set
+test_data_NB <- test_data_NB %>% mutate( Height = case_when(
+Height >= 0 & Height < 0.3396 ~ 1,
+Height >= 0.3396 & Height < 0.4757 ~ 2, Height >=0.4757 & Height < 0.6010 ~ 3,
+Height >= 0.6010 & Height <=1 ~ 4
+) )
+```
+
+```{r}
+cols <- names(df)
+train_data_NB[cols] <- lapply(train_data_NB[cols], factor) 
+test_data_NB[cols] <- lapply(test_data_NB[cols], factor)
+```
+```{r}
+str(train_data_NB)
+```
+```{r}
+library(klaR)
+# train the naive bayes model with train set
+nb_model <- NaiveBayes(NObeyesdad ~., data = train_data_NB, laplace=1)
+ # predict with test set
+nb_pred <- predict(nb_model, test_data_NB, type = "class")
+sum(as.vector(nb_pred$class) == test_data[17])/nrow(test_data)
+```
+# follow CRISP_DM 
+# for structuring this project I followed data mining process and the industry-standard CRISP-DM framework. 
+
+# 1. "bussiness understanding": first I tried to understand the "bussiness understanding" for my project it is estimation of obesity levels in individuals from the countries of Mexico, Peru and Colombia, based on their eating habits and physical condition.
+# 2 Data understanding : he data contains 17 attributes and 2111 records, the records are labeled with the class variable NObesity (Obesity Level), that allows clas- sification of the data using the values of Insufficient Weight, Normal Weight, Overweight Level I, Overweight Level II, Obesity Type I, Obesity Type II and Obesity Type III. variables is combination of numeric and categorical. 
+# 3 Data Prepration : I deal with missing data and outliers. then I make dummy code for categorical, normalize the numerical variables to peprocess the data. 
+# Modeling : I strated with KNN and then I explore other models to get beetter accuracy. I used Decissio tree model and also Neural networks with much better performance. 
+# Evaluation : I used the test data to find the accuracy of the model and check the R square and afte that I tried to boost my model and again did modeling like random forest and ressemble models to have a chance to compe up with a better model and more accurate prediction.  for Naivie based model, I get beck to stage of data preprocessig and make all variables categorical. again train NB model and evaluate. 
+# deployment : I find out that boosted decission tree for my data shows the maximum accuracy and best performance. 
+
